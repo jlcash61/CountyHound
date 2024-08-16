@@ -9,6 +9,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 // County boundaries GeoJSON (you can replace this with a more detailed one)
 const countyBoundariesUrl = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
 let countyBoundaries;
+let currentCountyLayer = null;
 
 fetch(countyBoundariesUrl)
     .then(response => response.json())
@@ -20,13 +21,20 @@ fetch(countyBoundariesUrl)
 
 let currentCounty = null;
 
+function speakText(message) {
+    const utterance = new SpeechSynthesisUtterance(message);
+    speechSynthesis.speak(utterance);
+}
+
 function checkCounty() {
     navigator.geolocation.getCurrentPosition(position => {
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
         const userLocation = [longitude, latitude];
 
-        // Update the map with the user's current location
+        if (currentCountyLayer) {
+            map.removeLayer(currentCountyLayer);
+        }
         const marker = L.marker([latitude, longitude]).addTo(map);
         map.setView([latitude, longitude], 12);
 
@@ -35,15 +43,19 @@ function checkCounty() {
         countyBoundaries.features.forEach(county => {
             if (turf.booleanPointInPolygon(userLocation, county)) {
                 newCounty = county.properties.NAME;
+                currentCountyLayer = L.geoJson(county, {
+                    style: {
+                        color: 'red',
+                        weight: 3
+                    }
+                }).addTo(map);
             }
         });
 
         if (newCounty !== currentCounty) {
-            if (newCounty) {
-                alert(`You crossed into ${newCounty} county!`);
-            } else {
-                alert('You have left a county boundary!');
-            }
+            const message = newCounty ? `You crossed into ${newCounty} county!` : 'You have left a county boundary!';
+            speakText(message); // Speak the message
+            alert(message);
             currentCounty = newCounty;
         }
     }, error => {
@@ -52,4 +64,5 @@ function checkCounty() {
 }
 
 // Check every 30 seconds (adjust as needed)
+checkCounty();
 setInterval(checkCounty, 30000);
