@@ -10,6 +10,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 const countyBoundariesUrl = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
 let countyBoundaries;
 let currentCountyLayer = null;
+let currentMarker = null;
+let currentCountyLabel = null;
 
 fetch(countyBoundariesUrl)
     .then(response => response.json())
@@ -32,10 +34,12 @@ function checkCounty() {
         const longitude = position.coords.longitude;
         const userLocation = [longitude, latitude];
 
-        if (currentCountyLayer) {
-            map.removeLayer(currentCountyLayer);
+        // Update or create the marker
+        if (currentMarker) {
+            currentMarker.setLatLng([latitude, longitude]);
+        } else {
+            currentMarker = L.marker([latitude, longitude]).addTo(map);
         }
-        const marker = L.marker([latitude, longitude]).addTo(map);
         map.setView([latitude, longitude], 12);
 
         let newCounty = null;
@@ -43,6 +47,10 @@ function checkCounty() {
         countyBoundaries.features.forEach(county => {
             if (turf.booleanPointInPolygon(userLocation, county)) {
                 newCounty = county.properties.NAME;
+                // Update the county layer on the map
+                if (currentCountyLayer) {
+                    map.removeLayer(currentCountyLayer);
+                }
                 currentCountyLayer = L.geoJson(county, {
                     style: {
                         color: 'red',
@@ -52,17 +60,39 @@ function checkCounty() {
             }
         });
 
+        // Update the county label and voice alert
         if (newCounty !== currentCounty) {
             const message = newCounty ? `You crossed into ${newCounty} county!` : 'You have left a county boundary!';
             speakText(message); // Speak the message
             alert(message);
             currentCounty = newCounty;
+
+            // Update or create the county label
+            if (currentCountyLabel) {
+                currentCountyLabel.setContent(`Current County: ${currentCounty}`);
+            } else {
+                currentCountyLabel = L.popup({
+                    closeButton: false,
+                    autoClose: false,
+                    closeOnEscapeKey: false,
+                    closeOnClick: false,
+                    className: 'county-label'
+                })
+                .setLatLng([latitude, longitude])
+                .setContent(`Current County: ${currentCounty}`)
+                .openOn(map);
+            }
+        } else if (currentCountyLabel) {
+            // Update the label position to follow the user
+            currentCountyLabel.setLatLng([latitude, longitude]);
         }
     }, error => {
         console.error('Error getting location:', error);
     });
 }
 
-// Check every 30 seconds (adjust as needed)
-checkCounty();
-setInterval(checkCounty, 30000);
+// Add event listener to the button to start the county detection and TTS
+document.getElementById('startBtn').addEventListener('click', () => {
+    checkCounty();
+    setInterval(checkCounty, 30000);  // Continue to check every 30 seconds
+});
